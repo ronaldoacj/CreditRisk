@@ -139,3 +139,8 @@ jupyter notebook Analysis/kpi_analysis.ipynb
 | `submission_baseline.csv` | Predições do modelo baseline |
 | `feature_importance.csv` | Importância de features do modelo final |
 | `feature_importance_baseline.csv` | Importância de features do modelo baseline |
+
+
+---
+
+Github: https://github.com/ronaldoacj/CreditRisk
