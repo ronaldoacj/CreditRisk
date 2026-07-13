@@ -37,7 +37,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from config import (
     ABT_DATA_PATH, DATA_DIR, NON_FEATURE_COLS,
-    RANDOM_STATE, EARLY_STOPPING_ROUNDS,
+    RANDOM_STATE, EARLY_STOPPING_ROUNDS, TUNE_RANDOM_STATE
 )
 
 try:
@@ -105,7 +105,7 @@ def make_objective(X: pd.DataFrame, y: pd.Series):
         O AUC resultante é uma estimativa — o número final vem do train.py.
     """
     # Prepara o fold uma única vez, fora do objetivo, para consistência entre trials
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=TUNE_RANDOM_STATE)
     train_idx, valid_idx = next(iter(cv.split(X, y)))
 
     X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]

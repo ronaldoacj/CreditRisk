@@ -45,6 +45,12 @@ TARGET_COLUMN   = "TARGET"
 ID_COLUMN       = "SK_ID_CURR"
 RANDOM_STATE    = 1001
 
+
+# Seed EXCLUSIVA do tuning (Optuna) — propositalmente diferente de RANDOM_STATE
+# para garantir que o split usado na busca de hiperparâmetros NUNCA seja
+# idêntico a nenhum fold usado na validação final do train.py.
+TUNE_RANDOM_STATE = 2024
+
 # ============================================================
 # SAÍDA / SUBMISSÃO
 # ============================================================
