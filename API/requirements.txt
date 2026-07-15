@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic
+joblib==1.4.2
+pandas>=2.0
+dill==0.3.1.1
+scikit-learn== 1.9.0
+lightgbm== 4.6.0
+numpy== 1.26.4
+scipy== 1.17.1
+sqlalchemy>=2.0
+psycopg2-binary>=2.9

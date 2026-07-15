@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+
+  # ---------------------------------------------------------
+  # 1) PIPELINE DE DADOS: bruta -> clear -> abt
+  # ---------------------------------------------------------
+  data-pipeline:
+    build:
+      context: .
+      dockerfile: DataPipeline/Dockerfile
+    container_name: hc-data-pipeline
+    volumes:
+      - ./data:/app/data
+      - ./common:/app/common
+    # command: >
+    #   sh -c "python data_sanitization.py && python abt_transform.py"
+
+  # ---------------------------------------------------------
+  # 2) TREINO / TUNING DO MODELO (LightGBM + Optuna)
+  #    train.py roda K-Fold CV e salva model.pkl (ensemble Airflow-ready)
+  # ---------------------------------------------------------
+  # model-train:
+  #   build:
+  #     context: .
+  #     dockerfile: Model/Dockerfile
+  #   container_name: hc-model-train
+  #   volumes:
+  #     - ./data:/app/data
+  #     - ./model_artifacts:/app/model_artifacts
+  #   depends_on:
+  #     data-pipeline:
+  #       condition: service_completed_successfully
+  #   # command: >
+  #   #   sh -c "python tune.py --trials 50 && python train.py"
+
+  # ---------------------------------------------------------
+  # 3) API DE PREDIÇÃO (FastAPI) - serve o modelo treinado
+  # ---------------------------------------------------------
+  model-api:
+    build:
+      context: .
+      dockerfile: API/Dockerfile
+    container_name: hc-model-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/model:/app/model_artifacts:ro
+    # depends_on:
+    #   model-train:
+    #     condition: service_completed_successfully
+    environment:
+      - MODEL_PATH=/app/model_artifacts/model_5feats.pkl
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------
+  # 4) INTERFACE (Streamlit) - consome a API de predição
+  # ---------------------------------------------------------
+  streamlit-app:
+    build:
+      context: .
+      dockerfile: App/Dockerfile
+    container_name: hc-streamlit-app
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://model-api:8000
+    depends_on:
+      model-api:
+        condition: service_healthy
+
+  # ---------------------------------------------------------
+  # 4.1) POSTGRES DA APLICACAO - guarda as simulacoes de credito
+  #      (separado do banco interno do Airflow)
+  # ---------------------------------------------------------
+  app-postgres:
+    image: postgres:13
+    container_name: hc-app-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=appuser
+      - POSTGRES_PASSWORD=apppass
+      - POSTGRES_DB=simulacoes
+    ports:
+      - "5433:5432"
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d simulacoes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------
+  # 5) AIRFLOW (orquestração: sanitize -> build_abt -> train_model)
+  #    train_model chama Model.train.run(), a versão "train_airflow"
+  #    do train.py (com joblib.dump do ensemble em model.pkl).
+  # ---------------------------------------------------------
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: hc-airflow-webserver
+    restart: always
+    depends_on:
+      - airflow-postgres
+    environment:
+      - PYTHONPATH=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+      - ./common:/opt/airflow/common
+      - ./DataPipeline:/opt/airflow/DataPipeline
+      - ./Model:/opt/airflow/Model
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "airflow db init &&
+               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+               airflow webserver"
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: hc-airflow-scheduler
+    restart: always
+    depends_on:
+      - airflow-postgres
+      - airflow-webserver
+    environment:
+      - PYTHONPATH=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+      - ./common:/opt/airflow/common
+      - ./DataPipeline:/opt/airflow/DataPipeline
+      - ./Model:/opt/airflow/Model
+    command: airflow scheduler
+
+  airflow-postgres:
+    image: postgres:13
+    container_name: hc-airflow-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+
+
+volumes:
+  airflow_postgres_data:
+  app_postgres_data:

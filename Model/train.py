@@ -20,11 +20,13 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold, StratifiedKFold
 
 import json
+import joblib
+from datetime import datetime
 
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from config import (
-    ABT_DATA_PATH, DATA_DIR, SUBMISSION_PATH,
+    ABT_DATA_PATH, DATA_DIR, SUBMISSION_PATH, MODEL_PKL_PATH,
     NUM_FOLDS, STRATIFIED, RANDOM_STATE,
     NON_FEATURE_COLS, LGBM_PARAMS,
     EARLY_STOPPING_ROUNDS, LOG_PERIOD,
@@ -130,6 +132,12 @@ def kfold_lightgbm(df: pd.DataFrame) -> pd.DataFrame:
 
     feature_importance_df = pd.DataFrame()
 
+    # NOVO: acumula os modelos treinados em cada fold para poder serializa-los
+    # ao final (necessario para servir o modelo depois via API/batch scoring).
+    # Cada fold ja e reduzido por early_stopping, entao o custo de memoria de
+    # guardar os N modelos (ex: N=5) e aceitavel mesmo em datasets grandes.
+    fold_models = []
+
     # ---- Loop de validação cruzada ----
     for fold_n, (train_idx, valid_idx) in enumerate(
         folds.split(train_df[feats], train_df["TARGET"])
@@ -173,7 +181,11 @@ def kfold_lightgbm(df: pd.DataFrame) -> pd.DataFrame:
         fold_auc = roc_auc_score(valid_y, oof_preds[valid_idx])
         print(f"Fold {fold_n + 1:2d} | AUC: {fold_auc:.6f} | best iter: {clf.best_iteration_}")
 
-        del clf, train_x, train_y, valid_x, valid_y
+        # NOVO: guarda o modelo treinado deste fold (antes de descartar
+        # train_x/train_y/valid_x/valid_y, que nao sao mais necessarios)
+        fold_models.append(clf)
+
+        del train_x, train_y, valid_x, valid_y
         gc.collect()
 
     # AUC final: concatena todas as predições OOF — estimativa mais honesta
@@ -184,6 +196,31 @@ def kfold_lightgbm(df: pd.DataFrame) -> pd.DataFrame:
     test_df["TARGET"] = sub_preds
     test_df[["SK_ID_CURR", "TARGET"]].to_csv(SUBMISSION_PATH, index=False)
     print(f"Submissão salva em: {SUBMISSION_PATH}")
+
+    # ------------------------------------------------------------------
+    # NOVO: serializa o ENSEMBLE completo (todos os N modelos do K-Fold)
+    # em um único arquivo model.pkl via joblib.
+    #
+    # Por que salvar TODOS os modelos e não só 1?
+    #   A predição de produção deve reproduzir o MESMO ensemble usado para
+    #   gerar sub_preds/AUC-OOF (média das N previsões) -- salvar um único
+    #   modelo "vencedor" mudaria a natureza do resultado e pioraria a
+    #   estabilidade da predição em produção.
+    #
+    # Por que joblib e não pickle puro?
+    #   joblib é mais eficiente para objetos com arrays grandes (numpy),
+    #   como é o caso de modelos LightGBM -- e é o padrão de fato do
+    #   ecossistema scikit-learn/LightGBM.
+    # ------------------------------------------------------------------
+    model_bundle = {
+        "models": fold_models,          # lista com os N modelos (um por fold)
+        "feats": feats,                 # ordem exata das features esperadas
+        "n_folds": folds.n_splits,
+        "full_auc_oof": full_auc,       # métrica de referência do treino
+        "trained_at": datetime.now().isoformat(timespec="seconds"),
+    }   
+    joblib.dump(model_bundle, MODEL_PKL_PATH)
+    print(f"Modelo (ensemble de {folds.n_splits} folds) salvo em: {MODEL_PKL_PATH}")
 
     return feature_importance_df
 
@@ -203,8 +240,24 @@ def run():
     # Converte colunas object/string remanescentes (segurança antes do LightGBM)
     # Pandas 3 distingue "object" de "str" — incluímos os dois para não deixar
     # nenhuma coluna de texto passar sem conversão.
-    for col in df.select_dtypes(include=["object", "str"]).columns:
+    for col in df.select_dtypes(include=["object"]).columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+
+
+    df = pd.read_csv(ABT_DATA_PATH)
+
+    # Converte colunas object remanescentes (seguança antes do LightGBM)
+    for col in df.select_dtypes(include=["object"]).columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # >>> Reduz memória: float64->float32 e int64->int32 (corta ~50% da RAM)
+    # Mantém TARGET intacto (precisa de NaN p/ separar treino/teste).
+    for col in df.select_dtypes(include=["float64"]).columns:
+        df[col] = df[col].astype("float32")
+    for col in df.select_dtypes(include=["int64"]).columns:
+        if col != "TARGET":
+            df[col] = pd.to_numeric(df[col], downcast="integer")
+    gc.collect()
 
     feat_importance = kfold_lightgbm(df)
 

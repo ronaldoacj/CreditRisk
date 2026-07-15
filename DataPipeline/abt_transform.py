@@ -21,7 +21,7 @@ from config import (
     CLEAN_DATA_PATH, ABT_DATA_PATH, INSTALLMENTS_AGG_BASE, INSTALLMENTS_EXPLICIT_COLS, NUM_ROWS,
     ID_COLUMN, POS_CASH_AGG_BASE, TARGET_COLUMN, PREV_APP_NUM_AGG, BUREAU_NUM_AGG
 )
-from DataPipeline.data_sanitization import (
+from data_sanitization import (
     load_bureau, load_previous_applications,
     load_pos_cash, load_installments, load_credit_card,
     one_hot_encoder,

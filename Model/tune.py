@@ -37,7 +37,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from config import (
     ABT_DATA_PATH, DATA_DIR, NON_FEATURE_COLS,
-    RANDOM_STATE, EARLY_STOPPING_ROUNDS, TUNE_RANDOM_STATE
+    RANDOM_STATE, EARLY_STOPPING_ROUNDS,
 )
 
 try:
@@ -69,9 +69,18 @@ def load_train_data() -> tuple[pd.DataFrame, pd.Series, list[str]]:
     print("Carregando ABT...")
     df = pd.read_csv(ABT_DATA_PATH)
 
-    # Converte strings remanescentes (pandas 3 pode ter dtype "str" ou "object")
-    for col in df.select_dtypes(include=["object", "str"]).columns:
+    # Converte colunas object remanescentes (seguança antes do LightGBM)
+    for col in df.select_dtypes(include=["object"]).columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # >>> Reduz memória: float64->float32 e int64->int32 (corta ~50% da RAM)
+    # Mantém TARGET intacto (precisa de NaN p/ separar treino/teste).
+    for col in df.select_dtypes(include=["float64"]).columns:
+        df[col] = df[col].astype("float32")
+    for col in df.select_dtypes(include=["int64"]).columns:
+        if col != "TARGET":
+            df[col] = pd.to_numeric(df[col], downcast="integer")
+    gc.collect()
 
     # Sanitiza nomes (LightGBM não aceita [ ] { } em nomes de features)
     df.columns = [re.sub(r"[^A-Za-z0-9_]+", "_", c) for c in df.columns]
@@ -105,7 +114,7 @@ def make_objective(X: pd.DataFrame, y: pd.Series):
         O AUC resultante é uma estimativa — o número final vem do train.py.
     """
     # Prepara o fold uma única vez, fora do objetivo, para consistência entre trials
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=TUNE_RANDOM_STATE)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
     train_idx, valid_idx = next(iter(cv.split(X, y)))
 
     X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]

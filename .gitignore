@@ -1,13 +1,19 @@
-/.DS_Store
-/.vscode
-/__pycache__
-/abt.csv
-/feature_importance.csv
-/feature_importance_baseline.csv
-/lgbm_importances.png
-/mnt
-/raw_data
-/submission.csv
-/submission_baseline.csv
-/*.csv
-/*.pyc
+# Dados
+data/
+
+# Artefatos de modelo
+model_artifacts/*.pkl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Airflow (logs locais, se existirem)
+airflow/logs/
+
+# IDE / SO
+.vscode/
+.DS_Store
+Thumbs.db

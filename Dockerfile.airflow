@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+# ============================================================================
+# Dockerfile.airflow -- imagem do Airflow com as dependencias do projeto
+# (LightGBM, Optuna, scikit-learn, joblib) ja instaladas.
+#
+# POR QUE ESTENDER A IMAGEM OFICIAL EM VEZ DE INSTALAR VIA requirements.txt
+# NO VOLUME?
+#   O Airflow oficial permite instalar pacotes extra via variavel de
+#   ambiente _PIP_ADDITIONAL_REQUIREMENTS, mas isso reinstala tudo TODA VEZ
+#   que o container sobe -- lento e nao reprodutivel (pode puxar versoes
+#   diferentes entre execucoes). Build de imagem propria = ambiente
+#   travado (pinned) e inicio rapido do container.
+# ============================================================================
+FROM apache/airflow:2.9.3-python3.11
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+USER airflow
+
+# Copia apenas o requirements primeiro para aproveitar cache de camadas do
+# Docker (so reinstala se requirements.txt mudar, nao a cada alteracao de
+# codigo do projeto).
+COPY requirements-airflow.txt /requirements-airflow.txt
+
+USER airflow
+RUN pip install --no-cache-dir -r /requirements-airflow.txt

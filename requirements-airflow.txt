@@ -1,0 +1,9 @@
+# Dependencias extras instaladas na imagem do Airflow (Dockerfile.airflow).
+# Mantido separado do requirements.txt "geral" do projeto porque o Airflow
+# ja vem com pandas/numpy/etc. em versoes pinadas -- aqui so listamos o que
+# FALTA para rodar data_sanitization.py, abt_transform.py, train.py e tune.py.
+
+lightgbm>=4.0
+optuna>=4.0
+scikit-learn>=1.3
+joblib==1.4.2

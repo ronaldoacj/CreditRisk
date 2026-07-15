@@ -1,0 +1,12 @@
+{
+    "nome": "Ronaldo",
+    "features": {
+        "AMT_INCOME_TOTAL": 150000.0,
+        "AMT_CREDIT": 500000.0,
+        "AMT_ANNUITY": 25000.0,
+        "IDADE_ANOS": 41,
+        "ANOS_EMPREGO": 5.0,
+        "CNT_FAM_MEMBERS": 2,
+        "BURO_AMT_CREDIT_SUM_DEBT_SUM": null
+    }
+}

@@ -121,7 +121,7 @@ def load_previous_applications(num_rows=None) -> pd.DataFrame:
     Colunas de datas preenchidas com 365243 indicam que o evento não ocorreu.
     """
     prev, _ = one_hot_encoder(
-        pd.read_csv(RAW_DATA["previous_app"], nrows=num_rows),
+        pd.read_csv(RAW_DATA["previous_application"], nrows=num_rows),
         nan_as_category=True,
     )
 
@@ -178,7 +178,13 @@ def run():
     # Incluímos ambos explicitamente para não deixar nenhuma coluna de texto
     # passar intacta para o clean_data.csv (o que quebraria modelos lineares
     # como a Regressão Logística mais adiante no pipeline).
-    text_cols = df.select_dtypes(include=["object", "str"]).columns
+    # Compatível com pandas antigo (Airflow) e pandas 3 (local)
+    try:
+        text_cols = df.select_dtypes(include=["object", "str"]).columns
+    except TypeError:
+        # pandas < 2.1 não aceita "str" — nele, texto é sempre "object"
+        text_cols = df.select_dtypes(include=["object"]).columns
+
     for col in text_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
