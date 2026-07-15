@@ -312,11 +312,12 @@ aplicada, por que monitorar e com qual frequência.
 
 | | |
 |---|---|
-| **O que é** | Avaliação de desempenho (AUC, taxas de erro) e de taxa de classificação `ALTO_RISCO` segmentada por subgrupos de clientes — ex.: faixas de idade (`IDADE_ANOS`), faixas de renda (`AMT_INCOME_TOTAL`), tamanho da família. |
+| **O que é** | Avaliação de desempenho (AUC, taxas de erro) e de taxa de classificação `ALTO_RISCO` segmentada por subgrupos de clientes — ex.: gênero (`CODE_GENDER`), faixas de idade (`IDADE_ANOS`), faixas de renda (`AMT_INCOME_TOTAL`). |
 | **Onde será aplicada** | Sobre as predições OOF do treino diário (por subgrupo da ABT) e sobre as simulações reais registradas no Postgres. |
-| **Por quê** | Crédito é um domínio regulado e sensível: o modelo não pode penalizar sistematicamente um subgrupo (viés discriminatório). Além do risco reputacional e legal, disparidades por subgrupo costumam revelar problemas de representatividade nos dados. |
+| **Por quê** | Crédito é um domínio regulado e sensível: o modelo não pode penalizar sistematicamente um subgrupo por atributos protegidos como **gênero** (viés discriminatório), o que gera risco reputacional e legal. Disparidades por subgrupo também costumam revelar problemas de representatividade nos dados de treino. |
 | **Frequência** | **Mensal**, com revisão obrigatória a cada mudança relevante de modelo (novo tuning, mudança de features). |
-| **Alerta sugerido** | Diferença de AUC > 0.05 entre subgrupos, ou taxa de `ALTO_RISCO` desproporcional sem justificativa nas variáveis de risco → análise de viés antes de manter o modelo em produção. |
+| **Alerta sugerido** | Diferença de AUC > 0.05 entre gêneros, ou taxa de `ALTO_RISCO` desproporcional entre homens e mulheres sem justificativa nas variáveis de risco → análise de viés em manter o modelo em produção. |
+
 
 ### Métrica operacional complementar: Taxa de Acionamento
 
@@ -342,8 +343,11 @@ IA** ao contexto de negócio:
 | AUC OOF diário cai abaixo do limite | Pipeline **bloqueia a promoção** do novo modelo e mantém o artefato anterior (`model_artifacts/`); alerta enviado ao time. |
 | PSI > 0.25 em qualquer feature | Acionamento automático da DAG `home_credit_tuning` (re-otimização) seguida de retreino, + notificação ao time de dados. |
 | Taxa de acionamento foge do padrão histórico | Alerta ao time de crédito para revisar a régua (threshold) e a origem das solicitações. |
-| Cliente recorrente com score piorando entre simulações | Agente de IA gera **oferta proativa de renegociação** ou ajuste de limite, antes da inadimplência se concretizar. |
+| Mesmo cliente simula repetidamente e o score piora a cada tentativa (ex.: aumentando o valor solicitado) | **Agente de IA** analisa o histórico de simulações (`/simulations`), identifica qual variável está levando o score para `ALTO_RISCO` (ex.: valor do crédito muito alto para a renda) e sugere proativamente uma combinação de valor/prazo/anuidade que enquadraria a solicitação em `BAIXO_RISCO`, aumentando a conversão sem intervenção manual. |
+
 
 ---
 
 *Projeto desenvolvido como entrega final do curso — LABDATA FIA.*
+
+*Disponível em: https://github.com/ronaldoacj/CreditRisk/tree/individual*
